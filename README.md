@@ -37,7 +37,7 @@ you to a friend of mine: Miss Barbra Streisand.
 
 **Be cautious** about using FAAAH to process massive datasets. Some providers
 (you know which ones) might do some Kafkaesque interpretations of their
-ambiguous ToS, and deploy _Orwellian telementry_ to detect infractions (hasn't
+ambiguous ToS, and deploy _Orwellian telemetry_ to detect infractions (hasn't
 happened to me yet, YOLO!)
 
 ## Features
@@ -51,7 +51,7 @@ happened to me yet, YOLO!)
   format (GraphRAG, LangChain, LlamaIndex, LiteLLM, the `openai` SDK), it
   supports FAAAH.
 - **Agent Agnostic:** Due to the agent entrypoint being *a prompt*, it's not
-  tied to any specific agent provider/version. Future proof.
+  tied to any specific agent provider/version. Future-proof.
 - **Human-in-the-loop Fallback:** If the AI agent gets stuck or hits usage
   limits, you can literally open the current response file (say
   `response-0004.txt`), type the answer yourself (or copy-paste the request to
@@ -61,22 +61,11 @@ happened to me yet, YOLO!)
 
 ### 0. Install
 
-Install on any platform (Linux, macOS, Windows) with `uv`:
+Install with `uv`:
 
 ```sh
 # from this repo
 uv tool install ./faaah        # installs the `faaah` command on PATH
-
-# or run ad-hoc without installing
-uvx --from ./faaah faaah
-```
-
-To work on the code (with ruff + pyright as dev deps):
-
-```sh
-uv sync                       # create env + install dev deps
-uv run ruff check .           # lint
-uv run pyright                # type-check
 ```
 
 ### 1. Start the server
@@ -92,7 +81,7 @@ faaah --queue /tmp/q        # override queue directory
 The agent prompt is printed on startup. To grab it again:
 
 ```sh
-faaah --agent-message       # prints ONLY the agent instructions, then exits
+faaah --agent-message
 ```
 
 Paste it into your coding agent, which then starts a **FAAAH coordinator
@@ -158,15 +147,15 @@ options:
 The protocol relies on files on the queue directory (`~/.cache/faaah/queue` by
 default).
 
-Each request produced a `prompt-<id>.txt` file, where first one's ID will be
+Each request produces a `prompt-<id>.txt` file, where the first one's ID will be
 `00001` and increase monotonically.
 
 FAAAH then expects the agent (or anything really) to generate a corresponding
 `response-<id>.txt`.
 
 The subagent workers are prompted to write a first pass as
-`response-<id>.txt.draft`. They are allowed to make corrections, before
-renaming it to the final file it considers the response to be _final_.
+`response-<id>.txt.draft`, which they may revise, before renaming it to the
+final `response-<id>.txt` they consider _final_.
 
 | File                      | Who writes | Meaning                             |
 | ------------------------- | ---------- | ----------------------------------- |
