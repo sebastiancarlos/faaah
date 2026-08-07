@@ -1,10 +1,10 @@
-# 🗣️FAAAH (Filesystem As An AI Handler)
+# 🗣️ FAAAH (Filesystem As An AI Handler)
 
 <p align="center">
   <img src="docs/faaah.png" alt="faaah">
 </p>
 
-The simplest OpenAI-compatible LLM proxy you will ever need.
+*The simplest OpenAI-compatible LLM proxy you will ever need.™️*
 
 FAAAH allows you to reuse your AI Agent subscription as a generic
 OpenAI-compatible local server.
