@@ -151,7 +151,7 @@ options:
   --watch            Block until a pending prompt exists, print its path.
 ```
 
-## Protocol (the filesystem "API")
+## Protocol (The "Filesystem API")
 
 The protocol relies on files on the queue directory (`~/.cache/faaah/queue` by
 default).
