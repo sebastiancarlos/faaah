@@ -64,8 +64,14 @@ happened to me yet, YOLO!)
 Install with `uv`:
 
 ```sh
-# from this repo
-uv tool install ./faaah        # installs the `faaah` command on PATH
+# from inside this repo
+uv tool install .             # installs the `faaah` command on PATH
+```
+
+Or straight from the git repository:
+
+```sh
+uv tool install git+https://github.com/sebastiancarlos/faaah
 ```
 
 ### 1. Start the server
