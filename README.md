@@ -131,7 +131,7 @@ print(response)
 
 A dependency-free example lives in `examples/chat.py`. 
 
-For an advanced usage, **GraphRAG fully driven through faaah**, see
+For an advanced usage, **GraphRAG fully driven through FAAAH**, see
 [graphrag-faaah](https://github.com/sebastiancarlos/graphrag-faaah).
 
 ## CLI usage
