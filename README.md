@@ -20,6 +20,8 @@ _(UNIX-philosophy certified)_:
 3. FAAAH then packages the responses into OpenAI-compatible JSON, and returns
    them to your app.
 
+<img src="docs/diagram.png" alt="faaah diagram">
+
 ## Why?
 
 Because you already pay for an AI coding assistant. Stop paying for API keys
