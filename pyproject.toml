@@ -7,6 +7,10 @@ requires-python = ">=3.14"
 license = { text = "MIT" }
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/sebastiancarlos/faaah"
+Repository = "https://github.com/sebastiancarlos/faaah"
+
 [project.optional-dependencies]
 dev = ["ruff", "pyright"]
 
