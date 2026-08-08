@@ -29,7 +29,7 @@ just for your weekend side projects! _faaah!_
 
 ## Video Demo
 
-<video src="docs/demo.mp4" controls></video>
+<video src="https://github.com/sebastiancarlos/faaah/raw/main/docs/demo.mp4" controls></video>
 
 ## Is This Allowed?
 
