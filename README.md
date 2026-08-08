@@ -27,6 +27,10 @@ _(UNIX-philosophy certified)_:
 Because you already pay for an AI coding assistant. Stop paying for API keys
 just for your weekend side projects! _faaah!_
 
+## Video Demo
+
+<video src="docs/demo.mp4" controls></video>
+
 ## Is This Allowed?
 
 It is my understanding that local, non-commercial use of this tool doesn't
