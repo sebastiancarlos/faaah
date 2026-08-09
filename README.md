@@ -27,6 +27,8 @@ _(UNIX-philosophy certified)_:
 Because you already pay for an AI coding assistant. Stop paying for API keys
 just for your weekend side projects! _faaah!_
 
+It's also an agnostic proxy between any OpenAPI-expecting tool, and any LLM.
+
 ## Video Demo
 
 https://github.com/user-attachments/assets/079620cb-e40d-49d0-9d70-7a8f6a6e1f07
