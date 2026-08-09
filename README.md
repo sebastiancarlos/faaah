@@ -45,9 +45,9 @@ But if any lawyer disagrees, kindly send me a message. I would then introduce
 you to a friend of mine: Miss Barbra Streisand.
 
 **Be cautious** about using FAAAH to process massive datasets. Some providers
-(you know which ones) might do some Kafkaesque interpretations of their
-ambiguous ToS, and deploy _Orwellian telemetry_ to detect infractions (hasn't
-happened to me yet, YOLO!)
+(you know [which ones](https://news.ycombinator.com/item?id=47963204)) might
+do some Kafkaesque interpretations of their ambiguous ToS, and deploy
+_Orwellian telemetry_ to detect infractions (hasn't happened to me yet, YOLO!)
 
 ## Features
 
