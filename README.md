@@ -29,6 +29,9 @@ just for your weekend side projects! _faaah!_
 
 It's also an agnostic proxy between any OpenAPI-expecting tool, and any LLM.
 
+For an advanced usage, **GraphRAG fully driven through FAAAH**, see
+[graphrag-faaah](https://github.com/sebastiancarlos/graphrag-faaah).
+
 ## Video Demo
 
 https://github.com/user-attachments/assets/079620cb-e40d-49d0-9d70-7a8f6a6e1f07
