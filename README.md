@@ -70,11 +70,11 @@ _Orwellian telemetry_ to detect infractions (hasn't happened to me yet, YOLO!)
 
 ### 0. Install
 
-Install with `uv`:
+Install with `uv`, from inside this repo:
 
 ```sh
-# from inside this repo
-uv tool install .             # installs the `faaah` command on PATH
+uv tool install .              # installs the `faaah` command on PATH
+uv tool install .[embeddings]  # with the local embeddings extra (see later)
 ```
 
 Or straight from the git repository:
@@ -142,6 +142,25 @@ A dependency-free example lives in `examples/chat.py`.
 
 For an advanced usage, **GraphRAG fully driven through FAAAH**, see
 [graphrag-faaah](https://github.com/sebastiancarlos/graphrag-faaah).
+
+### Embeddings
+
+FAAAH stays dependency-free by default, but can serve local embeddings via the
+optional `embeddings` `uv` extra (Installs a spaCy model, `en_core_web_md`):
+
+```bash
+uv tool install '.[embeddings]'   # global tool with embeddings (from inside this repo)
+uv sync --extra embeddings        # or just the dev environment
+```
+
+When installed, `POST /v1/embeddings` returns OpenAI-shaped vectors computed
+locally. Without the extra dependencies, the endpoint just returns `503`.
+
+```bash
+curl http://127.0.0.1:8000/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"model": "en_core_web_md", "input": ["hello world"]}'
+```
 
 ## CLI usage
 

@@ -24,9 +24,7 @@ def _cmd(*args: str) -> list[str]:
 
 
 def faaah(*args: str, cwd: str | Path = ROOT) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        _cmd(*args), cwd=cwd, capture_output=True, text=True, timeout=30
-    )
+    return subprocess.run(_cmd(*args), cwd=cwd, capture_output=True, text=True, timeout=30)
 
 
 def free_port() -> int:
@@ -71,9 +69,7 @@ class TestCLI(unittest.TestCase):
         # Place a prompt in the default queue dir and confirm bare `--watch`
         # (no --queue) finds it. Clean up afterwards.
         default = (
-            Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache")))
-            / "faaah"
-            / "queue"
+            Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "faaah" / "queue"
         )
         default.mkdir(parents=True, exist_ok=True)
         marker = default / "prompt-00099.txt"
@@ -192,9 +188,7 @@ class TestHTTPServer(unittest.TestCase):
         results: list = []
         t = threading.Thread(
             target=lambda: results.append(
-                self._post(
-                    {"model": "faaah", "messages": [{"role": "user", "content": "hi"}]}
-                )
+                self._post({"model": "faaah", "messages": [{"role": "user", "content": "hi"}]})
             ),
             daemon=True,
         )
@@ -215,6 +209,41 @@ class TestHTTPServer(unittest.TestCase):
         status, data = results[0]
         self.assertEqual(status, 200)
         self.assertEqual(data["choices"][0]["message"]["content"], "hello agent")
+
+    def test_embeddings_echoes_openai_shape(self):
+        """With the embeddings extra installed, POST /v1/embeddings returns
+        OpenAI-shaped vectors (one per input, correctly indexed)."""
+        status, data = self._post(
+            {"model": "en_core_web_md", "input": ["hello world", "another phrase"]},
+            path="/v1/embeddings",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(data["object"], "list")
+        self.assertEqual(len(data["data"]), 2)
+        for ent in data["data"]:
+            self.assertEqual(ent["object"], "embedding")
+            self.assertGreater(len(ent["embedding"]), 0)
+        self.assertEqual([d["index"] for d in data["data"]], [0, 1])
+        self.assertIn("usage", data)
+        self.assertEqual(len(data["data"][0]["embedding"]), len(data["data"][1]["embedding"]))
+
+    def test_embeddings_accepts_single_string(self):
+        """OpenAI allows `input` as a plain string; faaah should too."""
+        status, data = self._post(
+            {"model": "en_core_web_md", "input": "single string"},
+            path="/v1/embeddings",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(data["data"]), 1)
+
+    def test_embeddings_invalid_json_returns_400(self):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        conn.request("POST", "/v1/embeddings", body="not json")
+        resp = conn.getresponse()
+        body = json.loads(resp.read())
+        conn.close()
+        self.assertEqual(resp.status, 400)
+        self.assertIn("error", body)
 
 
 if __name__ == "__main__":

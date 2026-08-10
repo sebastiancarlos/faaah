@@ -13,6 +13,7 @@ agent instead of a hosted LLM.
 import argparse
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -20,7 +21,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 # --- ANSI terminal colors ---
 BOLD = "\033[1m"
@@ -172,6 +173,53 @@ def watch(queue_dir: str | Path) -> int:
         time.sleep(POLL_INTERVAL)
 
 
+# --- Optional local embeddings (needs `faaah[embeddings]`) ----------------
+SPACY_MODEL = os.environ.get("FAAAH_SPACY_MODEL", "en_core_web_md")
+EMBEDDINGS_INSTALL_HINT = (
+    "Install the embeddings extra and restart faaah:\n"
+    "    uv add --optional embeddings en-core-web-md --url "
+    "https://github.com/explosion/spacy-models/releases/download/"
+    "en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl"
+)
+_spacy_model: Any = None
+_spacy_lock = threading.Lock()
+
+
+def _load_spacy_model():
+    """Load the spaCy pipeline once; return None if unavailable."""
+    global _spacy_model
+    if _spacy_model is not None:
+        return _spacy_model
+    with _spacy_lock:
+        if _spacy_model is not None:
+            return _spacy_model
+        try:
+            import spacy
+        except ImportError:
+            logger.warning("Embeddings unavailable: spaCy not installed.")
+            return None
+        try:
+            _spacy_model = spacy.load(SPACY_MODEL)
+        except OSError:
+            logger.warning("Embeddings unavailable: model %r missing.", SPACY_MODEL)
+            return None
+    return _spacy_model
+
+
+def embed_texts(texts: list[str]) -> list[list[float]] | None:
+    """Embed texts with the local spaCy model; None if unavailable."""
+    nlp = _load_spacy_model()
+    if nlp is None:
+        return None
+    vectors: list[list[float]] = []
+    for text in texts:
+        vector = nlp(text).vector
+        values = [float(v) for v in vector] if vector.any() else [0.0] * len(vector)
+        norm = math.sqrt(sum(v * v for v in values)) or 1.0
+        vectors.append([v / norm for v in values])
+    return vectors
+
+
 class Server(BaseHTTPRequestHandler):
     server_version = "faaah/0.1"
 
@@ -192,6 +240,57 @@ class Server(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _read_json(self) -> dict | None:
+        """Read and parse the POST body; send a 400 and return None on bad JSON."""
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            return json.loads(self.rfile.read(length))
+        except ValueError, json.JSONDecodeError:
+            logger.warning("Rejected request: invalid JSON body.")
+            self._json(
+                400,
+                {
+                    "error": {
+                        "message": "invalid JSON body",
+                        "type": "invalid_request_error",
+                    }
+                },
+            )
+            return None
+
+    def _embeddings(self) -> None:
+        """Handle POST /v1/embeddings with local spaCy vectors (need `[embeddings]`)."""
+        req = self._read_json()
+        if req is None:
+            return
+        raw = req.get("input", [])
+        texts = [raw] if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
+        vectors = embed_texts(texts)
+        if vectors is None:
+            self._json(
+                503,
+                {
+                    "error": {
+                        "message": "embeddings unavailable",
+                        "type": "server_error",
+                        "hint": EMBEDDINGS_INSTALL_HINT,
+                    }
+                },
+            )
+            return
+        self._json(
+            200,
+            {
+                "object": "list",
+                "data": [
+                    {"object": "embedding", "index": i, "embedding": vec}
+                    for i, vec in enumerate(vectors)
+                ],
+                "model": SPACY_MODEL,
+                "usage": {"prompt_tokens": 0, "total_tokens": 0},
+            },
+        )
 
     def do_GET(self):
         """Mock some GET endpoints, in case a client relies on them."""
@@ -219,6 +318,9 @@ class Server(BaseHTTPRequestHandler):
     def do_POST(self):
         """On POST, write a prompt-ID.txt file. Wait for response-ID.txt file,
         and return response."""
+        if self.path == "/v1/embeddings":
+            self._embeddings()
+            return
         if self.path != "/v1/chat/completions":
             self._json(
                 404,
@@ -226,20 +328,8 @@ class Server(BaseHTTPRequestHandler):
             )
             return
 
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-            req = json.loads(self.rfile.read(length))
-        except ValueError, json.JSONDecodeError:
-            logger.warning("Rejected request: invalid JSON body.")
-            self._json(
-                400,
-                {
-                    "error": {
-                        "message": "invalid JSON body",
-                        "type": "invalid_request_error",
-                    }
-                },
-            )
+        req = self._read_json()
+        if req is None:
             return
 
         messages: list = req.get("messages", [])
