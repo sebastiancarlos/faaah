@@ -15,6 +15,7 @@ import json
 import logging
 import math
 import os
+import random
 import re
 import shutil
 import threading
@@ -65,6 +66,18 @@ def default_queue() -> Path:
     return base / "faaah" / "queue"
 
 
+def default_logs_root() -> Path:
+    """Default parent dir for per-session logs, under the user cache dir."""
+    cache_home = os.environ.get("XDG_CACHE_HOME")
+    base = Path(cache_home) if cache_home else Path.home() / ".cache"
+    return base / "faaah" / "sessions"
+
+
+def new_session_id() -> str:
+    """Return a datetime + random-suffix session id, unique across restarts."""
+    return time.strftime("%Y%m%d-%H%M%S") + "-" + "".join(random.choices("0123456789abcdef", k=4))
+
+
 def display_path(path: Path) -> str:
     """Render a path with `~` in place of the user's home directory."""
     resolved = path.resolve()
@@ -101,6 +114,7 @@ POLL_INTERVAL = 0.2
 
 # --- Configuration, modifiable via CLI flags ---
 QUEUE_DIR: Path = Path("faaah_queue")
+SESSION_DIR: Path | None = None  # per-server-run log mirror, set in main()
 HOST = "127.0.0.1"
 PORT = 8000
 TIMEOUT_SECONDS = 0.0
@@ -123,6 +137,16 @@ def atomic_write(path: Path, content: str) -> None:
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(content, encoding="utf-8")
     os.replace(tmp, path)
+
+
+def session_mirror(name: str, content: str) -> None:
+    """Mirror a queue file into the session log dir (no-op when logging off)."""
+    if SESSION_DIR is None:
+        return
+    try:
+        atomic_write(SESSION_DIR / name, content)
+    except OSError:
+        logger.warning("Could not write session mirror %s", name)
 
 
 def prompt_id(path: Path) -> int | None:
@@ -266,6 +290,8 @@ class Server(BaseHTTPRequestHandler):
             return
         raw = req.get("input", [])
         texts = [raw] if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
+        rid = next_id()
+        session_mirror(f"embed-{rid}-request.json", json.dumps(req, ensure_ascii=False, indent=2))
         vectors = embed_texts(texts)
         if vectors is None:
             self._json(
@@ -279,18 +305,19 @@ class Server(BaseHTTPRequestHandler):
                 },
             )
             return
-        self._json(
-            200,
-            {
-                "object": "list",
-                "data": [
-                    {"object": "embedding", "index": i, "embedding": vec}
-                    for i, vec in enumerate(vectors)
-                ],
-                "model": SPACY_MODEL,
-                "usage": {"prompt_tokens": 0, "total_tokens": 0},
-            },
+        payload = {
+            "object": "list",
+            "data": [
+                {"object": "embedding", "index": i, "embedding": vec}
+                for i, vec in enumerate(vectors)
+            ],
+            "model": SPACY_MODEL,
+            "usage": {"prompt_tokens": 0, "total_tokens": 0},
+        }
+        session_mirror(
+            f"embed-{rid}-response.json", json.dumps(payload, ensure_ascii=False, indent=2)
         )
+        self._json(200, payload)
 
     def do_GET(self):
         """Mock some GET endpoints, in case a client relies on them."""
@@ -344,6 +371,8 @@ class Server(BaseHTTPRequestHandler):
 
         prompt = self._build_prompt(rid, messages, response_format, QUEUE_DIR)
         atomic_write(req_path, prompt)
+        session_mirror(f"prompt-{rid}.txt", prompt)
+        session_mirror(f"request-{rid}.json", json.dumps(req, ensure_ascii=False, indent=2))
         logger.info(
             f"Request {rid} published "
             f"(format={YELLOW}{response_format}{RESET}): "
@@ -367,27 +396,28 @@ class Server(BaseHTTPRequestHandler):
         preview = f"{answer[:10]}..." if len(answer) > 10 else answer
         logger.info(f'Request {rid} answered ({len(answer)} chars). "{preview}"')
 
-        self._json(
-            200,
-            {
-                "id": f"chatcmpl-{rid}",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": answer},
-                        "finish_reason": "stop",
-                    }
-                ],
-                "usage": {
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0,
-                    "total_tokens": 0,
-                },
+        session_mirror(f"response-{rid}.txt", answer)
+
+        payload = {
+            "id": f"chatcmpl-{rid}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": answer},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
             },
-        )
+        }
+        session_mirror(f"response-{rid}.json", json.dumps(payload, ensure_ascii=False, indent=2))
+        self._json(200, payload)
 
     @staticmethod
     def _build_prompt(rid: str, messages: list, response_format: str, queue_dir: Path) -> str:
@@ -461,6 +491,12 @@ def main(argv: list | None = None) -> None:
         help="Directory where prompt/response files live (default: ~/.cache/faaah/queue).",
     )
     parser.add_argument(
+        "--log-dir",
+        default=str(default_logs_root()),
+        help="Parent dir for per-session logs (default: ~/.cache/faaah/sessions). "
+        "A new <TIMESTAMP>-<RANDOM> subdir is created each run; pass empty string to disable.",
+    )
+    parser.add_argument(
         "--timeout",
         type=float,
         default=0.0,
@@ -478,12 +514,16 @@ def main(argv: list | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
-    global QUEUE_DIR, HOST, PORT, TIMEOUT_SECONDS
+    global QUEUE_DIR, SESSION_DIR, HOST, PORT, TIMEOUT_SECONDS
 
     logging.basicConfig(
         level=logging.DEBUG,
         format="%(asctime)s %(levelname)-7s %(message)s",
         datefmt="%H:%M:%S",
+    )
+    # Plain (non-colored) log formatter for files.
+    _file_fmt = logging.Formatter(
+        "%(asctime)s %(levelname)-7s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
     _fmt = _ColoredFormatter()
     for handler in logging.getLogger().handlers:
@@ -505,9 +545,20 @@ def main(argv: list | None = None) -> None:
     QUEUE_DIR.mkdir(parents=True, exist_ok=True)
     logger.info(f"Queue reset: {display_path(QUEUE_DIR)}")
 
+    # --- Per-session log dir: mirrors every queue file + a plain session.log ---
+    if args.log_dir:
+        SESSION_DIR = Path(args.log_dir) / new_session_id()
+        SESSION_DIR.mkdir(parents=True, exist_ok=True)
+        _fh = logging.FileHandler(SESSION_DIR / "session.log", encoding="utf-8")
+        _fh.setFormatter(_file_fmt)
+        logging.getLogger().addHandler(_fh)
+    logger.info(f"Session log dir: {display_path(SESSION_DIR) if SESSION_DIR else '(disabled)'}")
+
     print(f"{BOLD}{CYAN}faaah{RESET} - {BOLD}Filesystem As An AI Handler{RESET}")
     print(f"  - listening on {BOLD}{HOST}:{PORT}{RESET}")
     print(f"  - queue dir:   {BLUE}{display_path(QUEUE_DIR)}{RESET}")
+    if SESSION_DIR is not None:
+        print(f"  - session log: {BLUE}{display_path(SESSION_DIR)}{RESET}")
     print(f"\n{GREEN}Agent prompt {DIM}(also available at `faaah --agent-message`){RESET}:")
     print("-" * 70)
     print(agent_message(QUEUE_DIR))

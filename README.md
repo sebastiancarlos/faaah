@@ -89,7 +89,19 @@ uv tool install git+https://github.com/sebastiancarlos/faaah
 faaah                       # listens on 127.0.0.1:8000, queue ~/.cache/faaah/queue
 faaah --port 8080           # override port
 faaah --queue /tmp/q        # override queue directory
+faaah --log-dir /tmp/logs   # override session log root (see below)
 ```
+
+Each run creates a session-log dir (`~/.cache/faaah/sessions/<TIMESTAMP>-<RANDOM>` by
+default) that mirrors **every** queue file written or answered during that run,
+so you can debug a session even after the queue is wiped on restart:
+
+- `prompt-<id>.txt`, `response-<id>.txt` — same files as the queue
+- `request-<id>.json`, `response-<id>.json` — the raw OpenAI request/response
+- `embed-<id>-request.json`, `embed-<id>-response.json` — embeddings traffic
+- `session.log` — plain-text copy of all log lines
+
+Pass `--log-dir ""` to disable session logging.
 
 ### 2. Point your agent at the queue
 
@@ -165,7 +177,7 @@ curl http://127.0.0.1:8000/v1/embeddings \
 ## CLI usage
 
 ```txt
-usage: faaah [-h] [--host HOST] [--port PORT] [--queue QUEUE] [--timeout TIMEOUT] [--agent-message] [--watch]
+usage: faaah [-h] [--host HOST] [--port PORT] [--queue QUEUE] [--log-dir LOG_DIR] [--timeout TIMEOUT] [--agent-message] [--watch]
 
 Filesystem As An AI Handler: an OpenAI-compatible proxy backed by an AI agent working over text files.
 
@@ -174,6 +186,7 @@ options:
   --host HOST        Address to bind (default: 127.0.0.1).
   --port PORT        Port to listen on (default: 8000).
   --queue QUEUE      Directory where prompt/response files live (default: ~/.cache/faaah/queue).
+  --log-dir LOG_DIR  Parent dir for per-session logs (default: ~/.cache/faaah/sessions). A new <TIMESTAMP>-<RANDOM> subdir is created each run; pass empty string to disable.
   --timeout TIMEOUT  Abort each call after N seconds. 0 (default) waits forever.
   --agent-message    Print ONLY the agent prompt and exit (it's also printed on launch).
   --watch            Block until a pending prompt exists, print its path.

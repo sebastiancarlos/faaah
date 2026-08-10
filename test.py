@@ -116,7 +116,7 @@ class TestHTTPServer(unittest.TestCase):
         cls.queue = Path(cls.tmp.name)
         cls.port = free_port()
         cls.proc = subprocess.Popen(
-            [*_cmd(), "--port", str(cls.port), "--queue", str(cls.queue)],
+            [*_cmd(), "--port", str(cls.port), "--queue", str(cls.queue), "--log-dir", ""],
             cwd=ROOT,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
