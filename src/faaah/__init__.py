@@ -18,6 +18,7 @@ import os
 import random
 import re
 import shutil
+import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -96,8 +97,10 @@ def agent_message(queue: str | Path) -> str:
     return f"""You coordinate work to be performed by subagents. You never read
 the actual work description, only delegate it. Repeat forever:
 
-1. Run `{watch_command}` (blocking helper). It prints the path of a pending file
-   prompt-<id>.txt. Blocks until one exists.
+1. Run `{watch_command}` (blocking helper). It prints the path of a pending
+   file prompt-<id>.txt. Blocks until one exists. DO NOT BOTHER checking if
+   `{watch_command}` exists in the environment; assume it does - it will fail
+   anyway if it doesn't, which is ok.
 2. For the printed path, spawn ONE fresh worker subagent. Its task message
    carries only the prompt path: "Process the file at <path>." Do not include
    the prompt contents.
@@ -118,6 +121,7 @@ SESSION_DIR: Path | None = None  # per-server-run log mirror, set in main()
 HOST = "127.0.0.1"
 PORT = 8000
 TIMEOUT_SECONDS = 0.0
+DEBUG_FLOW = False  # when set, dump full request/response pairs on completion
 
 # --- Work ID global data ---
 _COUNTER = 0
@@ -190,9 +194,7 @@ def watch(queue_dir: str | Path) -> int:
     while True:
         ready = ready_paths(queue_dir)
         if ready:
-            shown = display_path(ready[0])
-            logger.info(f"Ready prompt: {shown}")
-            print(shown)
+            print(display_path(ready[0]))
             return 0
         time.sleep(POLL_INTERVAL)
 
@@ -242,6 +244,47 @@ def embed_texts(texts: list[str]) -> list[list[float]] | None:
         norm = math.sqrt(sum(v * v for v in values)) or 1.0
         vectors.append([v / norm for v in values])
     return vectors
+
+
+def _flow_answer(answer: str) -> str:
+    """Pretty-print JSON answers (with color via jq when available), else raw."""
+    try:
+        parsed = json.loads(answer)
+    except ValueError, TypeError:
+        return answer
+    jq = shutil.which("jq")
+    if jq:
+        try:
+            proc = subprocess.run(
+                [jq, "-C", "."],
+                input=json.dumps(parsed, ensure_ascii=False),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if proc.returncode == 0 and proc.stdout:
+                return proc.stdout
+        except OSError, subprocess.SubprocessError:
+            pass
+    return json.dumps(parsed, indent=2, ensure_ascii=False)
+
+
+def _flow_dump(
+    rid: str, messages: list, answer: str | None = None, error: str | None = None
+) -> None:
+    """Dump a full request/response pair as a single block, once, at completion."""
+    if not DEBUG_FLOW:
+        return
+    lines = [f"{MAGENTA}── flow {rid} ──{RESET}"]
+    lines.append(f"{BOLD}{BLUE}REQUEST{RESET}")
+    lines += [str(m.get("content", "")) for m in messages]
+    if answer is not None:
+        lines.append(f"{BOLD}{GREEN}RESPONSE{RESET}")
+        lines.append(_flow_answer(answer))
+    if error is not None:
+        lines.append(f"{BOLD}{RED}ERROR{RESET}")
+        lines.append(error)
+    logger.info("\n".join(lines))
 
 
 class Server(BaseHTTPRequestHandler):
@@ -388,11 +431,13 @@ class Server(BaseHTTPRequestHandler):
             answer = self._wait(res_path, req_path)
         except TimeoutError:
             logger.error(f"Request {rid} timed out after {TIMEOUT_SECONDS:.0f}s.")
+            _flow_dump(rid, messages, error=f"timed out after {TIMEOUT_SECONDS:.0f}s")
             self._json(504, {"error": {"message": "agent timeout", "type": "server_error"}})
             return
 
         # --- Return POST response
 
+        _flow_dump(rid, messages, answer=answer)
         preview = f"{answer[:10]}..." if len(answer) > 10 else answer
         logger.info(f'Request {rid} answered ({len(answer)} chars). "{preview}"')
 
@@ -508,13 +553,20 @@ def main(argv: list | None = None) -> None:
         help="Print ONLY the agent prompt and exit (it's also printed on launch).",
     )
     parser.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="Also print the full request/response flow for each call, once it "
+        "completes (paired together, not split across two log lines).",
+    )
+    parser.add_argument(
         "--watch",
         action="store_true",
         help="For agent-side use: block until a pending prompt exists, print its path.",
     )
     args = parser.parse_args(argv)
 
-    global QUEUE_DIR, SESSION_DIR, HOST, PORT, TIMEOUT_SECONDS
+    global QUEUE_DIR, SESSION_DIR, HOST, PORT, TIMEOUT_SECONDS, DEBUG_FLOW
 
     logging.basicConfig(
         level=logging.DEBUG,
@@ -541,6 +593,7 @@ def main(argv: list | None = None) -> None:
     HOST = args.host
     PORT = args.port
     TIMEOUT_SECONDS = args.timeout
+    DEBUG_FLOW = args.debug
     shutil.rmtree(QUEUE_DIR, ignore_errors=True)
     QUEUE_DIR.mkdir(parents=True, exist_ok=True)
     logger.info(f"Queue reset: {display_path(QUEUE_DIR)}")
@@ -559,6 +612,8 @@ def main(argv: list | None = None) -> None:
     print(f"  - queue dir:   {BLUE}{display_path(QUEUE_DIR)}{RESET}")
     if SESSION_DIR is not None:
         print(f"  - session log: {BLUE}{display_path(SESSION_DIR)}{RESET}")
+    if DEBUG_FLOW:
+        print(f"  - debug flow:  {GREEN}on{RESET}")
     print(f"\n{GREEN}Agent prompt {DIM}(also available at `faaah --agent-message`){RESET}:")
     print("-" * 70)
     print(agent_message(QUEUE_DIR))
