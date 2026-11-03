@@ -40,6 +40,42 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("--watch", result.stdout)
 
+    def test_copy_flag_copies_agent_prompt_to_clipboard(self):
+        """`-c/--copy` pipes the startup agent prompt into a clipboard helper."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            clipboard_out = tmp_path / "clipboard.txt"
+            # Fake `wl-copy` that records whatever it receives on stdin.
+            (tmp_path / "wl-copy").write_text(f'#!/bin/sh\ncat > "{clipboard_out}"\n')
+            (tmp_path / "wl-copy").chmod(0o755)
+            env = {**os.environ, "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}"}
+            proc = subprocess.Popen(
+                [
+                    *_cmd(),
+                    "--port",
+                    str(free_port()),
+                    "--queue",
+                    str(tmp_path / "queue"),
+                    "--log-dir",
+                    "",
+                    "-c",
+                ],
+                cwd=ROOT,
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            try:
+                for _ in range(100):
+                    if clipboard_out.exists() and clipboard_out.read_text():
+                        break
+                    time.sleep(0.1)
+                self.assertTrue(clipboard_out.exists(), "clipboard helper was never called")
+                self.assertTrue(clipboard_out.read_text().startswith("You coordinate"))
+            finally:
+                proc.terminate()
+                proc.wait(timeout=5)
+
     def test_agent_message_prints_coordinator_instructions(self):
         result = faaah("--agent-message")
         self.assertEqual(result.returncode, 0)

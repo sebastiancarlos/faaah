@@ -90,6 +90,7 @@ faaah                       # listens on 127.0.0.1:8000, queue ~/.cache/faaah/qu
 faaah --port 8080           # override port
 faaah --queue /tmp/q        # override queue directory
 faaah --log-dir /tmp/logs   # override session log root (see below)
+faaah -c                    # also copy the agent prompt to the clipboard
 ```
 
 Each run creates a session-log dir (`~/.cache/faaah/sessions/<TIMESTAMP>-<RANDOM>` by
@@ -177,7 +178,7 @@ curl http://127.0.0.1:8000/v1/embeddings \
 ## CLI usage
 
 ```txt
-usage: faaah [-h] [--host HOST] [--port PORT] [--queue QUEUE] [--log-dir LOG_DIR] [--timeout TIMEOUT] [--agent-message] [--watch]
+usage: faaah [-h] [--host HOST] [--port PORT] [--queue QUEUE] [--log-dir LOG_DIR] [--timeout TIMEOUT] [--agent-message] [-c] [-d] [--watch]
 
 Filesystem As An AI Handler: an OpenAI-compatible proxy backed by an AI agent working over text files.
 
@@ -189,6 +190,8 @@ options:
   --log-dir LOG_DIR  Parent dir for per-session logs (default: ~/.cache/faaah/sessions). A new <TIMESTAMP>-<RANDOM> subdir is created each run; pass empty string to disable.
   --timeout TIMEOUT  Abort each call after N seconds. 0 (default) waits forever.
   --agent-message    Print ONLY the agent prompt and exit (it's also printed on launch).
+  -c, --copy         Copy the agent prompt to the system clipboard on startup (uses wl-copy, xclip, xsel, pbcopy or clip.exe if available).
+  -d, --debug        Print the full request/response flow for each call once it completes.
   --watch            Block until a pending prompt exists, print its path.
 ```
 

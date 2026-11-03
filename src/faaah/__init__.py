@@ -112,6 +112,41 @@ Failure handling is automatic: if a worker leaves no response file, faaah
 --watch prints the same path again - just spawn a new worker."""
 
 
+# --- Clipboard helpers (external tools only: faaah stays dependency-free) ---
+CLIPBOARD_COMMANDS: list[list[str]] = [
+    ["wl-copy"],
+    ["xclip", "-selection", "clipboard"],
+    ["xsel", "--clipboard", "--input"],
+    ["pbcopy"],
+    ["clip.exe"],
+]
+
+
+def copy_to_clipboard(text: str) -> str | None:
+    """Copy text to the system clipboard with the first available helper.
+
+    Returns the name of the helper that worked, or None when no clipboard
+    tool is installed (or all of them failed).
+    """
+    for command in CLIPBOARD_COMMANDS:
+        if shutil.which(command[0]) is None:
+            continue
+        try:
+            proc = subprocess.run(
+                command,
+                input=text,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+            )
+        except OSError, subprocess.SubprocessError:
+            continue
+        if proc.returncode == 0:
+            return command[0]
+    return None
+
+
 # --- Internal configuration ---
 POLL_INTERVAL = 0.2
 
@@ -553,6 +588,14 @@ def main(argv: list | None = None) -> None:
         help="Print ONLY the agent prompt and exit (it's also printed on launch).",
     )
     parser.add_argument(
+        "-c",
+        "--copy",
+        dest="clipboard",
+        action="store_true",
+        help="Copy the agent prompt to the system clipboard on startup "
+        "(uses wl-copy, xclip, xsel, pbcopy or clip.exe if available).",
+    )
+    parser.add_argument(
         "-d",
         "--debug",
         action="store_true",
@@ -616,8 +659,18 @@ def main(argv: list | None = None) -> None:
         print(f"  - debug flow:  {GREEN}on{RESET}")
     print(f"\n{GREEN}Agent prompt {DIM}(also available at `faaah --agent-message`){RESET}:")
     print("-" * 70)
-    print(agent_message(QUEUE_DIR))
+    prompt = agent_message(QUEUE_DIR)
+    print(prompt)
     print("-" * 70 + "\n")
+    if args.clipboard:
+        tool = copy_to_clipboard(prompt)
+        if tool:
+            print(f"{GREEN}Agent prompt copied to clipboard{RESET} {DIM}(via {tool}){RESET}\n")
+        else:
+            logger.warning(
+                "Could not copy agent prompt to clipboard: no helper found "
+                "(tried wl-copy, xclip, xsel, pbcopy, clip.exe)."
+            )
     print(f"{GREEN}Point OpenAI clients at{RESET} {BOLD}http://{HOST}:{PORT}/v1{RESET}")
     print(f"{GREEN}Or try:{RESET}\r")
     print(f"    curl -s http://{HOST}:{PORT}/v1/chat/completions \\{RESET}")
