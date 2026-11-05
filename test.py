@@ -19,6 +19,7 @@ from faaah import (
     normalize_tools,
     parse_tool_reply,
     render_history,
+    render_tools,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -95,6 +96,16 @@ TIME_TOOL = {
 class TestToolHelpers(unittest.TestCase):
     def setUp(self):
         self.tools = normalize_tools([WEATHER_TOOL])
+
+    def test_render_tools_includes_tool_definition(self):
+        prompt = render_tools(self.tools)
+        self.assertIn("get_weather", prompt)
+        self.assertIn('"tool_calls"', prompt)
+
+    def test_render_tools_required_and_single_call(self):
+        prompt = render_tools(self.tools, mode="required", parallel=False)
+        self.assertIn("You MUST request at least one tool call", prompt)
+        self.assertIn("Request exactly one tool call", prompt)
 
     def test_normalize_tools_extracts_function_fields(self):
         self.assertEqual(
@@ -587,6 +598,10 @@ class TestHTTPServer(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("get_weather", prompt)
         self.assertIn("TOOLS", prompt)
+        begin = prompt.index(f"=== BEGIN MESSAGES {rid} ===")
+        self.assertLess(prompt.index("TOOLS"), begin)
+        self.assertLess(prompt.index("INSTRUCTIONS"), begin)
+        self.assertLess(prompt.index("RULES"), begin)
 
         choice = data["choices"][0]
         self.assertEqual(choice["finish_reason"], "tool_calls")

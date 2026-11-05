@@ -190,17 +190,27 @@ def render_tools(
     return f"""
 TOOLS
 -----
-You cannot execute tools yourself. The client executes them and sends the
-results back in `tool_result` blocks. Never invent a tool result.
+The client is the process that created this prompt file. It, not you, executes
+these tools, and it will run any tool calls in your response, and send the tool
+result to a new subagent. If a listed tool can retrieve data, perform an
+action, or do any part of the task, ALWAYS request that tool instead of using
+your own shell, web, browser, search, or subagent tools for that part; anything
+else would be unambiguously considered a TASK FAILURE. Request the tool, or use
+previous tool results. Do not use native tools to re-obtain information
+already provided in a tool result: Treat the tool result as authoritative;
+re-obtaining it is a TASK FAILURE. Native tools are fine for work no listed
+tool covers, and for reasoning over tool results. Never invent a tool result.
 
 {guidance}
-To request one or more tool calls, commit a single JSON object whose ONLY
-key is `tool_calls`, for example:
+To request one or more tool calls, write a single JSON object whose ONLY key is
+`tool_calls` as the entire content of the response file. Its value MUST be a
+JSON array, even for a single call:
 
 {{"tool_calls": [{{"name": "<tool>", "arguments": {{<arguments object>}}}}]}}
 
-`arguments` must be a JSON object matching the tool schema. Use only these
-tools:
+`arguments` must be a JSON object matching the tool schema.
+
+These are the only tools you may request from the client:
 {json.dumps(tools, indent=2, ensure_ascii=False)}
 """
 
@@ -895,13 +905,13 @@ Produce a corrected reply that follows the rules above.
 ============
 request_id: {rid}
 response_format: {response_format}
-=== BEGIN MESSAGES {rid} ===
-{block}
-=== END MESSAGES {rid} ===
-{tool_section}{retry_section}
+{tool_section}
 INSTRUCTIONS
 ------------
-Answer the conversation above using your LLM capabilities, and hand
+This prompt  file may be larger than a single read. Read or search all of it
+before processing it; if a read is truncated, continue from where it stopped.
+
+Answer the conversation below using your LLM capabilities, and hand
 in your answer in TWO phases so it is never read half-written:
 
 1. DRAFT. Write your answer to the file
@@ -917,7 +927,14 @@ RULES
 - Never modify, rename, or delete any other file in `{queue_path}`.
 - The committed file must contain ONLY your raw answer, no preamble,
   no markdown fences, no extra commentary.
-{json_rule}{tool_rule}"""
+- DO NOT answer this chat. WRITE the response file named in INSTRUCTIONS. YOUR
+  CHAT REPLY IS IGNORED.
+- Stop after committing the response file. Do not wait for any follow-up work.
+{json_rule}{tool_rule}{retry_section}
+=== BEGIN MESSAGES {rid} ===
+{block}
+=== END MESSAGES {rid} ===
+"""
 
     def _client_gone(self) -> bool:
         """Return True when the client has closed its side of the connection."""
