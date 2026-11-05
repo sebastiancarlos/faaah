@@ -256,6 +256,22 @@ included in the new prompt.
 If the client disconnects, or the server-side `--timeout` fires, faaah removes
 the prompt so `--watch` does not keep re-offering work nobody is waiting for.
 
+## Prior art
+
+Other projects put an API in front of a CLI subscription:
+
+- [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) is a Go proxy
+  that exposes several CLI providers such as Claude Code, Codex, Gemini, and Grok
+  through OpenAI, Gemini, Claude, Codex, and Grok compatible endpoints. It
+  handles OAuth, streaming, multimodal input, tool calling, and multi-account
+  load balancing.
+- [opencode2api](https://github.com/jasonxu114514/opencode2api) is a Go
+  gateway for OpenCode Zen and Zen Go.
+
+Unlike the above, _FAAAH doesn't talk to a provider at all: FAAAH tells you
+how to prompt the model you already have to act as an OpenAI API_, so in
+principle any model that you can prompt locally works.
+
 ## License
 
 MIT
