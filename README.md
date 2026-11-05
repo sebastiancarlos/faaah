@@ -156,6 +156,38 @@ A dependency-free example lives in `examples/chat.py`.
 For an advanced usage, **GraphRAG fully driven through FAAAH**, see
 [graphrag-faaah](https://github.com/sebastiancarlos/graphrag-faaah).
 
+### Tool calling
+
+FAAAH supports the OpenAI `tools` parameter, including multi-turn tool loops.
+Send a non-empty `tools` array and the prompt tells the agent which tools
+exist and how to request them. Without `tools`, the classic text-only behavior
+is unchanged.
+
+The agent requests tool calls by committing a JSON object whose only key is
+`tool_calls`:
+
+```json
+{"tool_calls": [{"name": "get_weather", "arguments": {"city": "Lisbon"}}]}
+```
+
+FAAAH mints the call ids, returns `finish_reason: "tool_calls"`, and expects the
+client to execute the tool and send the result back as a `tool` message. On the
+next request, tool results are rendered as `<tool_result>` blocks and the agent
+answers in plain text with `finish_reason: "stop"`.
+
+Supported `tool_choice` values are `auto` (default), `none`, `required`, and a
+forced function. `parallel_tool_calls: false` limits the reply to one call.
+Malformed tool replies are retried up to twice with the error fed back to the
+agent; after that FAAAH returns `502`.
+
+Streaming is not supported; requests with `stream: true` get a `400`.
+
+A dependency-free example lives in `examples/tools.py`:
+
+```sh
+./examples/tools.py "What's the weather in Lisbon?"
+```
+
 ### Embeddings
 
 FAAAH stays dependency-free by default, but can serve local embeddings via the
@@ -217,7 +249,12 @@ final `response-<id>.txt` they consider _final_.
 | `response-<id>.txt`       | agent      | the answer                          |
 
 Retry is automatic: a prompt with no response file is simply re-offered by
-`faaah --watch` to the coordinator until one appears.
+`faaah --watch` to the coordinator until one appears. Tool-call validation
+retries also use a fresh prompt id, with the rejected reply and the reason
+included in the new prompt.
+
+If the client disconnects, or the server-side `--timeout` fires, faaah removes
+the prompt so `--watch` does not keep re-offering work nobody is waiting for.
 
 ## License
 
